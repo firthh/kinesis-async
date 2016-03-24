@@ -1,10 +1,14 @@
 # kineis-async
 
-A Clojure library designed to ... well, that part is up to you.
+A different take on a AWS Kinesis consumer.
 
-## Usage
+Rather than supplying a function when creating a worker, `start-worker` will instead return a core.async channel. The consumer will stop checkpointing in AWS as soon as the channel is closed.
 
-FIXME
+## TODO
+
+ - Figure out how to kill the worker when the channel is closed.
+ - Exclude all of the Amazonica dependencies until we have only the bare minimum required
+ - Remove dependency on Amazonica altogether
 
 ## License
 
