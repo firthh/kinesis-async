@@ -24,15 +24,23 @@
                             stream-name
                             application-name]
                      :or {credentials {}}}]
-  (let [chan (async/channel)]
-    (kinesis/worker! :app application-name
-                     :credentials (assoc (or credentials {}) :endpoint region)
-                     :region-name region
-                     :endpoint (format "kinesis.%s.amazonaws.com" region)
-                     :stream stream-name
-                     :deserializer unwrap
-                     :initial-position-in-stream "TRIM_HORIZON"
-                     :checkpoint false
-                     :worker-id application-name
-                     :processor (processor chan))
-    chan))
+  (let [chan (async/channel)
+        chan2 (async/channel)]
+    (let [[^Worker worker uuid] (kinesis/worker :app application-name
+                                                :credentials (assoc (or credentials {}) :endpoint region)
+                                                :region-name region
+                                                :endpoint (format "kinesis.%s.amazonaws.com" region)
+                                                :stream stream-name
+                                                :deserializer unwrap
+                                                :initial-position-in-stream "TRIM_HORIZON"
+                                                :checkpoint false
+                                                :worker-id application-name
+                                                :processor (processor chan))]
+      (future (.run worker))
+      (async/go-loop []
+        (let [record (<! chan)]
+          (if (put! record chan2)
+            (recur chan)
+            (do (.shutdown worker)
+                (async/close! chan)))))
+      chan)))
