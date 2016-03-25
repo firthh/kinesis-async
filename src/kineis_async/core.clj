@@ -16,6 +16,8 @@
 (defn- unwrap [byte-buffer]
   (decode byte-buffer))
 
+(def current-worker (atom nil))
+
 (defn processor [channel]
   (fn [records]
     (loop [[record & records] records]
@@ -23,17 +25,18 @@
         true ; if we run out of records we return true so kinesis checkpoints
         (do
           (prn "pushing record onto first queue")
-          (if (async/>!! channel record) ; will return false if channel is closed so we will return false so checkpointing does not occur
+          (if (async/put! channel record) ; will return false if channel is closed so we will return false so checkpointing does not occur
             (recur records)
-            (println "Channel closed, returning false")))))))
+            (do (println "Channel closed, returning false, and shutting down worker")
+                (.shutdown @current-worker)
+                (println "Called shutdown on worker"))))))))
 
 (defn start-worker [{:keys [credentials
                             region
                             stream-name
                             application-name]
                      :or {credentials {}}}]
-  (let [chan (async/chan)
-        chan2 (async/chan)]
+  (let [chan (async/chan)]
     (let [[^Worker worker uuid] (kinesis/worker :app application-name
                                                 :credentials (assoc (or credentials {}) :endpoint region)
                                                 :region-name region
@@ -44,17 +47,16 @@
                                                 :checkpoint false
                                                 :worker-id application-name
                                                 :processor (processor chan))]
+      (reset! current-worker worker)
       (future (.run worker))
-      (async/go-loop []
-        (let [record (async/<! chan)]
-          (prn "about to put record on second queue")
-          (if (async/>!! chan2 record)
-            (recur)
-            (do (prn "closing second channel")
-                (.shutdown worker)
-                (async/close! chan)
-                ))))
-      chan2)))
+      chan)))
 
 
-
+(defn -main []
+  (let [chan ]
+    (prn "taking value off queue")
+    (println (async/<!! chan))
+    (Thread/sleep 2000)
+    (prn "about to close the channel")
+    (async/close! chan)
+    ))
